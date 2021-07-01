@@ -19,7 +19,7 @@ namespace AudioTimer
 
         private static Task move(ButtplugClientDevice dev, uint speed, uint position)
         {
-            return dev.SendRawWriteCmd(Endpoint.Tx, new byte[] { 0x03, (byte)speed, (byte)position }, false);
+            return dev.SendRawWriteCmd(Endpoint.Tx, new byte[] { 0x03, (byte)position, (byte)speed }, false);
         }
 
         static async Task Main(string[] args)
@@ -67,6 +67,10 @@ namespace AudioTimer
 
             var audio = new AudioRecorder();
 
+            //initialise
+            await dev.SendRawWriteCmd(Endpoint.Tx, new byte[] { 0x03, 0x01, 0 }, false);
+
+            // reset
             await move( dev, 20, 0 );
             Thread.Sleep(1000);
 
@@ -75,13 +79,14 @@ namespace AudioTimer
             var pos = 0;
             var lastPos = 0;
             var time = 0L;
+            var threshold = 0.25f;
 
             Console.WriteLine($"Testing forward {pos}");
             audio.Start();
             await move( dev, 20, 200 );
             Thread.Sleep(2000);
             audio.Stop();
-            time = audio.NoisePeriod(0.25f);
+            time = audio.NoisePeriod(threshold);
             audio.Report();
             await WaitForKey();
 
@@ -105,7 +110,7 @@ namespace AudioTimer
                     await move(dev, (uint)speed, (uint)pos);
                     Thread.Sleep(2000);
                     audio.Stop();
-                    time = audio.NoisePeriod(0.25f);
+                    time = audio.NoisePeriod(threshold);
                     Console.WriteLine($"Found {time}ms of noise");
                     log.WriteLine($"forward,{speed},{range},{time},{lastPos},{pos},{file}");
                     Thread.Sleep(1000);
@@ -118,7 +123,7 @@ namespace AudioTimer
                     await move(dev, (uint)speed, (uint)pos);
                     Thread.Sleep(2000);
                     audio.Stop();
-                    time = audio.NoisePeriod(0.25f);
+                    time = audio.NoisePeriod(threshold);
                     Console.WriteLine($"Found {time}ms of noise");
                     log.WriteLine($"reverse,{speed},{range},{time},{lastPos},{pos},{file}");
                     Thread.Sleep(1000);
