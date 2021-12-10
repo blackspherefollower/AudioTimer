@@ -46,10 +46,10 @@ namespace AudioTimer
             }
 
             _waveSource.RecordingStopped += waveSource_RecordingStopped;
-            _waveSource.DataAvailable += delegate(object sender, WaveInEventArgs args)
+            _waveSource.DataAvailable += delegate (object sender, WaveInEventArgs args)
             {
                 _writer?.Write(args.Buffer, 0, args.BytesRecorded);
-                var sampleBuffer = new float[args.BytesRecorded/2];
+                var sampleBuffer = new float[args.BytesRecorded / 2];
                 nsp.Read(sampleBuffer, 0, sampleBuffer.Length);
             };
 
@@ -110,14 +110,14 @@ namespace AudioTimer
             float r = _omax - _omin;
             _peaks.ForEach(p =>
             {
-                int n = Convert.ToInt16(((p-_omin) / r) * 20);
-                Console.WriteLine($"{new string('|', n)}{new string(' ', 20-n)}{n}");
+                int n = Convert.ToInt16(((p - _omin) / r) * 20);
+                Console.WriteLine($"{new string('|', n)}{new string(' ', 20 - n)}{n}");
             });
 
 
             Console.WriteLine($"Range {_omin}-{_omax}");
             Console.WriteLine($"Recorded {_peaks.Count / 100.0}s of data");
-            Console.WriteLine($"Realtime {(_stopTime-_startTime) / 1000.0}s of data");
+            Console.WriteLine($"Realtime {(_stopTime - _startTime) / 1000.0}s of data");
         }
 
         public long NoisePeriod(float threshold)
@@ -132,7 +132,7 @@ namespace AudioTimer
             int start = -1;
             int end = -1;
             int pos = 0;
-            while(start < 0 && pos < _peaks.Count)
+            while (start < 0 && pos < _peaks.Count)
             {
                 var n = (_peaks[pos] - _omin) / r;
                 if (n > threshold)
