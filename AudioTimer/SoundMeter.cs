@@ -11,14 +11,17 @@ namespace AudioTimer
     class SoundMeter
     {
         private HidDevice _dev;
-        private object _readlock  = new object();
+        private object _readlock = new object();
         private List<double> _monitorData;
         private Task _monitor = null;
         private bool _monitorEnd;
 
         public SoundMeter()
         {
-            _dev = HidDevices.Enumerate(0x10c4, 0x82cd).First(d => d.IsConnected && !d.IsOpen);
+            var devs = HidDevices.Enumerate(0x10c4, 0x82cd);
+            if (devs.Any())
+                _dev = devs.First(d => d.IsConnected && !d.IsOpen);
+
             if (_dev == null)
                 return;
 
@@ -28,7 +31,7 @@ namespace AudioTimer
 
         public bool Connected()
         {
-            return _dev.IsOpen;
+            return _dev?.IsOpen == true;
         }
 
         public bool GetData(out DateTime date, out double level)
@@ -38,7 +41,7 @@ namespace AudioTimer
                 date = default;
                 level = 0;
 
-                if (!_dev.IsOpen)
+                if (_dev?.IsOpen != true)
                     return false;
 
                 var data = _dev.ReadReportSync(0x05).Data;
@@ -62,7 +65,8 @@ namespace AudioTimer
             }
             _monitorData = new List<double>();
             _monitorEnd = false;
-            _monitor = Task.Run(() => {
+            _monitor = Task.Run(() =>
+            {
                 while (!_monitorEnd)
                 {
                     if (GetData(out _, out var level))
@@ -82,7 +86,7 @@ namespace AudioTimer
 
             if (_monitor == null)
                 return false;
-            
+
             _monitorEnd = true;
             _monitor.GetAwaiter().GetResult();
             _monitor = null;
@@ -99,7 +103,7 @@ namespace AudioTimer
         public static int Main(string[] args)
         {
             var sm = new SoundMeter();
-            
+
             sm.StartMonitor();
             Console.ReadKey(true);
             if (sm.EndMonitor(out var max, out var avg, out var min))

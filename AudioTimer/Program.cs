@@ -157,7 +157,12 @@ namespace AudioTimer
 
         private static Task moveFredorch(ButtplugClientDevice dev, uint speed, uint position)
         {
-            var data = new List<byte>() { 0x01, 0x10, 0x00, 0x6B, 0x00, 0x05, 0x0a, 0x00, (byte)speed, 0x00, (byte)speed, 0x00, (byte)position, 0x00, (byte)position, 0x00, 0x01 };
+            // Position on the fredorch is 0-15
+            if (position > 15 || position < 0)
+            {
+                throw new ArgumentException("Position is out of range 0-15!");
+            }
+            var data = new List<byte>() { 0x01, 0x10, 0x00, 0x6B, 0x00, 0x05, 0x0a, 0x00, (byte)speed, 0x00, (byte)speed, 0x00, (byte)(position * 10), 0x00, (byte)(position * 10), 0x00, 0x01 };
             data.AddRange(CRC16(data.ToArray()));
             return dev.SendRawWriteCmd(Endpoint.Tx, data.ToArray(), false);
         }
@@ -223,7 +228,7 @@ namespace AudioTimer
 
             Console.WriteLine($"Testing forward {pos}");
             audio.Start();
-            await moveFredorch(dev, 15, 144);
+            await moveFredorch(dev, 15, 15);
             Thread.Sleep(2000);
             audio.Stop();
             time = audio.NoisePeriod(threshold);
@@ -241,7 +246,7 @@ namespace AudioTimer
                     Console.WriteLine($"Testing speed {speed}");
                     int timeEstimate = 1000 * Math.Max(1, 12 - (speed * 2));
 
-                    for (int range = 150; range > 0; range -= 5)
+                    for (int range = 15; range > 0; range--)
                     {
                         Console.WriteLine($"Testing range {range}");
 
@@ -288,9 +293,139 @@ namespace AudioTimer
         }
 
 
+        private static Task moveHismithServo(ButtplugClientDevice dev, uint position)
+        {
+            // Position on the fredorch is 0-15
+            if (position > 100 || position < 0)
+            {
+                throw new ArgumentException("Position is out of range 0-100!");
+            }
+            var data = new List<byte>() { 0xcc, 0x0a, (byte)position, (byte)(position + 0x0a) };
+            return dev.SendRawWriteCmd(Endpoint.Tx, data.ToArray(), false);
+        }
+
+        static async Task HismithServoMain(string[] args)
+        {
+            TaskCompletionSource<ButtplugClientDevice> _tcs = new TaskCompletionSource<ButtplugClientDevice>();
+            ButtplugClient bp = new ButtplugClient("timer_client");
+
+
+            bp.DeviceAdded += (sender, eventArgs) =>
+            {
+                Console.WriteLine($"Found device: {eventArgs.Device.Name}");
+                if (eventArgs.Device.Name.Contains("Hismith Servo"))
+                {
+                    _tcs.SetResult(eventArgs.Device);
+                }
+            };
+            bp.ErrorReceived += (sender, eventArgs) =>
+            {
+                Console.WriteLine($"Bang: {eventArgs.Exception.Message}");
+                _tcs.SetException(eventArgs.Exception);
+
+            };
+            bp.ServerDisconnect += (sender, eventArgs) =>
+            {
+                Console.WriteLine("Server disconnected!");
+                _tcs.SetCanceled();
+            };
+
+            await bp.ConnectAsync(new ButtplugWebsocketConnectorOptions(new Uri("ws://localhost:12345")));
+
+            await bp.StartScanningAsync();
+            Console.WriteLine($"Looking for Hismith Servo");
+
+            var dev = await _tcs.Task;
+            if (dev == null)
+            {
+                return;
+            }
+
+            Console.WriteLine($"Found the test device");
+            await WaitForKey();
+
+            var audio = new AudioRecorder();
+            var sm = new SoundMeter();
+
+            // reset
+            await moveHismithServo(dev, 0);
+            Thread.Sleep(1000);
+
+            var log = new System.IO.StreamWriter(@"hismith.csv", true);
+
+            var time = 0L;
+            var threshold = 0.5f;
+            var doubleMaxNoise = 0.0;
+
+            Console.WriteLine($"Testing forward {100}");
+            audio.Start();
+            await moveHismithServo(dev, 100);
+            Thread.Sleep(2000);
+            audio.Stop();
+            time = audio.NoisePeriod(threshold);
+            audio.Report();
+            await WaitForKey();
+
+            await moveHismithServo(dev, 0);
+            Thread.Sleep(5000);
+
+            try
+            {
+                // loop start pos first
+                for (uint start = 0; start < 100; start += 1)
+                {
+                    Console.WriteLine($"Testing start pos {start}");
+                    await moveHismithServo(dev, start);
+                    Thread.Sleep(1000);
+
+                    int timeEstimate = 1000 * 3;
+
+                    for (uint end = 100; end > start; end -= 1)
+                    {
+                        Console.WriteLine($"Testing range {start} to {end}");
+
+                        var file = "rec-" + DateTime.Now.ToFileTime() + ".wav";
+                        Console.WriteLine($"Testing forward {end-start}");
+                        audio.Start(file);
+                        sm.StartMonitor();
+                        Thread.Sleep(500);
+                        await moveHismithServo(dev, end);
+                        Thread.Sleep(timeEstimate);
+                        audio.Stop();
+                        sm.EndMonitor(out doubleMaxNoise, out _, out _);
+                        time = audio.NoisePeriod(threshold);
+                        Console.WriteLine($"Found {time}ms of noise");
+                        log.WriteLine($"forward,1,{end - start},{time},{start},{end},{file},{doubleMaxNoise}");
+                        log.FlushAsync();
+                        Thread.Sleep(1000);
+
+                        file = "rec-" + DateTime.Now.ToFileTime() + ".wav";
+                        Console.WriteLine($"Testing reverse {end-start}");
+                        audio.Start(file);
+                        sm.StartMonitor();
+                        Thread.Sleep(500);
+                        await moveHismithServo(dev, start);
+                        Thread.Sleep(timeEstimate);
+                        audio.Stop();
+                        sm.EndMonitor(out doubleMaxNoise, out _, out _);
+                        time = audio.NoisePeriod(threshold);
+                        Console.WriteLine($"Found {time}ms of noise");
+                        log.WriteLine($"reverse,1,{end - start},{time},{end},{start},{file},{doubleMaxNoise}");
+                        log.FlushAsync();
+                        Thread.Sleep(1000);
+                    }
+                }
+            }
+            catch (ButtplugException bpe)
+            {
+                Console.WriteLine(bpe);
+            }
+        }
+
+
         static async Task Main(string[] args)
         {
-            Console.WriteLine("Pick mode:\n1: Vorze Piston\n2: Fredorch F21S\n\n");
+            Console.WriteLine("Pick mode:\n1: Vorze Piston\n2: Fredorch F21S\n3: Hismith Servo\n");
             while (true)
             {
                 var key = Console.ReadKey(true);
@@ -303,6 +438,9 @@ namespace AudioTimer
                             return;
                         case 2:
                             await FredorchMain(args);
+                            return;
+                        case 3:
+                            await HismithServoMain(args);
                             return;
                     }
                 }

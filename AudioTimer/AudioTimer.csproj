@@ -9,7 +9,7 @@
   <ItemGroup>
     <PackageReference Include="Buttplug" Version="2.0.6" />
     <PackageReference Include="hidlibrary" Version="3.3.40" />
-    <PackageReference Include="NAudio" Version="2.0.1" />
+    <PackageReference Include="NAudio" Version="2.2.1" />
   </ItemGroup>
 
 </Project>
