@@ -354,7 +354,7 @@ namespace AudioTimer
             var log = new System.IO.StreamWriter(@"hismith.csv", true);
 
             var time = 0L;
-            var threshold = 0.5f;
+            var threshold = 0.3f;
             var doubleMaxNoise = 0.0;
 
             Console.WriteLine($"Testing forward {100}");
